@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.spec.bak
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# PyInstaller
+*.spec.old
+
+# OS
+Thumbs.db
+Desktop.ini
+
+# Application data (local testing)
+# Note: actual app data goes to %APPDATA%\WinScheduler\
