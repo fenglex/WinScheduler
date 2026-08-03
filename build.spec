@@ -50,7 +50,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,          # --noconsole：无控制台黑框
-    icon=None,              # 无外部图标（程序运行时自动生成）
+    icon="app.ico",         # 应用图标（由 tools/build_icon.py 生成）
 )
 
 coll = COLLECT(
