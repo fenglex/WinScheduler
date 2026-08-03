@@ -156,6 +156,13 @@ def _post_strip():
         "Qt6OpenGL.dll", "Qt6OpenGLWidgets.dll",
         "Qt6Sql.dll", "Qt6Network.dll", "Qt6NetworkAuth.dll",
         "Qt6WebSockets.dll", "Qt6WebView.dll", "Qt6WebEngine.dll",
+        # 以下为本应用不用但 PyInstaller 仍拉进来的：
+        "opengl32sw.dll",           # 5.3MB 软件渲染 OpenGL 后备
+        "Qt6QmlModels.dll",         # 976KB QML 模型
+        "Qt6QmlMeta.dll",           # 160KB QML 元对象
+        "Qt6QmlWorkerScript.dll",   # QML WorkerScript
+        "Qt6VirtualKeyboard.dll",   # 436KB 虚拟键盘（桌面不用）
+        "d3dcompiler_47.dll",       # DirectX 编译器（QtGui 可能带入）
     ]
     for dll in drop_dlls:
         p = os.path.join(base, dll)
@@ -174,6 +181,35 @@ def _post_strip():
                     os.unlink(os.path.join(res_dir, f))
                 except OSError:
                     pass
+
+    # ── 精简 plugins/ ────────────────────────────────
+    # imageformats：只保留 qico（Windows 图标）和 qsvg（SVG 矢量）
+    # 本应用图标用 QPainter 程序化绘制，理论上不需要任何 imageformat
+    img_dir = os.path.join(base, "plugins", "imageformats")
+    if os.path.isdir(img_dir):
+        for f in os.listdir(img_dir):
+            if not f.lower().startswith(("qico", "qsvg")):
+                try:
+                    os.unlink(os.path.join(img_dir, f))
+                except OSError:
+                    pass
+
+    # platforms：只保留 qwindows.dll
+    # 删除 qdirect2d（与 qwindows 重复）、qminimal、qoffscreen
+    plat_dir = os.path.join(base, "plugins", "platforms")
+    if os.path.isdir(plat_dir):
+        for f in os.listdir(plat_dir):
+            if not f.lower().startswith("qwindows"):
+                try:
+                    os.unlink(os.path.join(plat_dir, f))
+                except OSError:
+                    pass
+
+    # generic：删除触屏插件（桌面不用）
+    gen_dir = os.path.join(base, "plugins", "generic")
+    if os.path.isdir(gen_dir):
+        import shutil
+        shutil.rmtree(gen_dir, ignore_errors=True)
 
     # 报告最终体积
     total = 0
