@@ -5,12 +5,12 @@
 
 from datetime import datetime
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QColor
+from PySide6.QtCore import Qt, QSize, QTimer
+from PySide6.QtGui import QAction, QColor, QFont
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QHeaderView, QLabel, QMainWindow, QMenu,
-    QMessageBox, QSplitter, QSystemTrayIcon, QTableWidget, QTableWidgetItem,
-    QToolBar, QVBoxLayout, QWidget,
+    QMessageBox, QSplitter, QStackedWidget, QSystemTrayIcon, QTableWidget,
+    QTableWidgetItem, QToolBar, QVBoxLayout, QWidget,
 )
 
 from config import STATUS_LABELS, TRIGGER_LABELS
@@ -20,7 +20,7 @@ from core.task_executor import TaskExecutor
 from database.manager import DatabaseManager
 from ui.icons import (
     icon_add, icon_delete, icon_edit, icon_refresh, icon_run,
-    icon_settings, icon_stop,
+    icon_settings, icon_stop, icon_toggle,
 )
 from ui.log_panel import LogPanel
 from ui.settings_dialog import SettingsDialog
@@ -84,34 +84,50 @@ class MainWindow(QMainWindow):
         # ── 工具栏 ────────────────────────────────────────
         toolbar = QToolBar("主工具栏")
         toolbar.setMovable(False)
-        toolbar.setIconSize(toolbar.iconSize())
+        # 图标 + 文字 横向排列，确保一眼看出功能
+        toolbar.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        # 统一图标尺寸，避免大图标挤掉文字
+        toolbar.setIconSize(QSize(20, 20))
         self.addToolBar(toolbar)
 
-        self.tb_new = toolbar.addAction(icon_add(), "新建")
+        # 第一组：任务管理（新建 / 编辑 / 删除）
+        self.tb_new = toolbar.addAction(icon_add(), "新建任务")
+        self.tb_new.setToolTip("新建一个调度任务 (Ctrl+N)")
+        self.tb_new.setShortcut("Ctrl+N")
         self.tb_new.triggered.connect(self._new_task)
-        self.tb_edit = toolbar.addAction(icon_edit(), "编辑")
+
+        self.tb_edit = toolbar.addAction(icon_edit(), "编辑任务")
+        self.tb_edit.setToolTip("编辑选中的任务")
         self.tb_edit.triggered.connect(self._edit_task)
-        self.tb_delete = toolbar.addAction(icon_delete(), "删除")
+
+        self.tb_delete = toolbar.addAction(icon_delete(), "删除任务")
+        self.tb_delete.setToolTip("删除选中的任务及其历史日志")
         self.tb_delete.triggered.connect(self._delete_task)
 
         toolbar.addSeparator()
 
-        self.tb_run = toolbar.addAction(icon_run(), "运行")
+        # 第二组：执行控制（运行 / 停止 / 启停切换）
+        self.tb_run = toolbar.addAction(icon_run(), "立即运行")
+        self.tb_run.setToolTip("立即手动触发选中的任务")
         self.tb_run.triggered.connect(self._run_selected)
+
         self.tb_stop = toolbar.addAction(icon_stop(), "停止")
+        self.tb_stop.setToolTip("终止正在运行的选中任务")
         self.tb_stop.triggered.connect(self._stop_selected)
 
-        toolbar.addSeparator()
-
-        self.tb_enable = toolbar.addAction("启用/禁用")
+        self.tb_enable = toolbar.addAction(icon_toggle(), "启用/禁用")
+        self.tb_enable.setToolTip("切换选中任务的启用状态")
         self.tb_enable.triggered.connect(self._toggle_enabled)
 
         toolbar.addSeparator()
 
-        self.tb_refresh = toolbar.addAction(icon_refresh(), "刷新")
+        # 第三组：通用（刷新 / 设置）
+        self.tb_refresh = toolbar.addAction(icon_refresh(), "刷新列表")
+        self.tb_refresh.setToolTip("从数据库重新加载任务列表")
         self.tb_refresh.triggered.connect(self.refresh_tasks)
 
         self.tb_settings = toolbar.addAction(icon_settings(), "设置")
+        self.tb_settings.setToolTip("打开设置（自启、托盘、日志保留等）")
         self.tb_settings.triggered.connect(self._open_settings)
 
         # ── 中央布局 ──────────────────────────────────────
@@ -133,18 +149,38 @@ class MainWindow(QMainWindow):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setContextMenuPolicy(Qt.CustomContextMenu)
         self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
+        self.table.setWordWrap(False)
+        # 任务名称列自适应
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.table.setColumnWidth(0, 40)
-        self.table.setColumnWidth(2, 80)
-        self.table.setColumnWidth(3, 160)
-        self.table.setColumnWidth(4, 60)
-        self.table.setColumnWidth(5, 140)
-        self.table.setColumnWidth(6, 140)
+        # 其余列固定宽度（按功能预留足够空间）
+        self.table.setColumnWidth(0, 50)   # ID
+        self.table.setColumnWidth(2, 100)  # 触发方式
+        self.table.setColumnWidth(3, 180)  # 调度表达式
+        self.table.setColumnWidth(4, 80)   # 状态
+        self.table.setColumnWidth(5, 150)  # 上次运行
+        self.table.setColumnWidth(6, 150)  # 下次运行
+        # 行高更舒展
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        # 表头可点击排序（视觉提示）
+        self.table.setSortingEnabled(True)
 
         self.table.doubleClicked.connect(self._edit_task)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
 
-        splitter.addWidget(self.table)
+        # 空表占位：用 StackedWidget 在表格上方叠加居中提示
+        self.table_stack = QStackedWidget()
+        self.table_stack.addWidget(self.table)
+
+        self.empty_placeholder = QLabel(
+            "📭  暂无任务\n\n点击工具栏「新建任务」创建第一个定时任务"
+        )
+        self.empty_placeholder.setAlignment(Qt.AlignCenter)
+        self.empty_placeholder.setStyleSheet(
+            "color: #888888; font-size: 14px; line-height: 1.6;"
+        )
+        self.table_stack.addWidget(self.empty_placeholder)
+        splitter.addWidget(self.table_stack)
 
         # 日志面板
         self.log_panel = LogPanel(self.db)
@@ -158,19 +194,25 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central)
 
         # ── 状态栏 ────────────────────────────────────────
-        self.status_label = self._make_status_label("● 调度器启动中...")
-        self.statusBar().addWidget(self.status_label)
-        self.lbl_task_count = self._make_status_label("任务: 0")
-        self.lbl_running = self._make_status_label("运行中: 0")
-        self.lbl_autostart = self._make_status_label("自启: 未知")
+        # 左侧：主状态（调度器运行/暂停）
+        self.status_label = self._make_status_label("● 调度器启动中...", name="main")
+        self.statusBar().addWidget(self.status_label, 1)
+
+        # 右侧永久区：任务统计、运行中、自启
+        self.lbl_task_count = self._make_status_label("任务: 0", name="metric")
+        self.lbl_running = self._make_status_label("运行中: 0", name="metric")
+        self.lbl_autostart = self._make_status_label("自启: 未知", name="metric")
         self.statusBar().addPermanentWidget(self.lbl_task_count)
         self.statusBar().addPermanentWidget(self.lbl_running)
         self.statusBar().addPermanentWidget(self.lbl_autostart)
 
     @staticmethod
-    def _make_status_label(text: str) -> QLabel:
+    def _make_status_label(text: str, name: str = "") -> QLabel:
+        """构造状态栏标签：name 用于 QSS 区分主状态 / 指标。"""
         lbl = QLabel(text)
-        lbl.setStyleSheet("padding: 0 8px;")
+        if name:
+            lbl.setObjectName(f"status_{name}")
+        lbl.setTextFormat(Qt.PlainText)
         return lbl
 
     def _connect_signals(self):
@@ -190,6 +232,12 @@ class MainWindow(QMainWindow):
         tasks = self.db.get_all_tasks()
         self.table.setRowCount(len(tasks))
         self.log_panel.update_task_list(tasks)
+
+        # 空表/有表切换：占位提示 vs 实际表格
+        if tasks:
+            self.table_stack.setCurrentWidget(self.table)
+        else:
+            self.table_stack.setCurrentWidget(self.empty_placeholder)
 
         for row, t in enumerate(tasks):
             trigger_label = TRIGGER_LABELS.get(t["trigger_type"], t["trigger_type"])
@@ -233,8 +281,17 @@ class MainWindow(QMainWindow):
             for col, val in enumerate(row_data):
                 item = QTableWidgetItem(val)
                 item.setData(Qt.UserRole, t["id"])
+                # 居中对齐：ID / 触发方式 / 状态
+                if col in (0, 2, 4):
+                    item.setTextAlignment(Qt.AlignCenter)
                 if col == 4:
                     item.setForeground(QColor(status_color))
+                # 时间列使用等宽字体，避免时间宽度变化导致抖动
+                if col in (5, 6):
+                    f = item.font()
+                    f.setFamily("Cascadia Code")
+                    f.setStyleHint(QFont.Monospace)
+                    item.setFont(f)
                 self.table.setItem(row, col, item)
 
         self._update_status_bar(len(tasks))
