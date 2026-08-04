@@ -20,6 +20,7 @@ from core.task_executor import TaskExecutor
 from database.manager import DatabaseManager
 from system.autostart import AutoStart
 from system.single_instance import SingleInstance
+from ui.check_style import CheckIndicatorStyle
 from ui.icons import get_app_icon
 from ui.main_window import MainWindow
 from ui.tray_icon import TrayIcon
@@ -45,6 +46,7 @@ def main():
     app.setApplicationDisplayName("任务调度器")
     app.setApplicationVersion(APP_VERSION)
     app.setWindowIcon(get_app_icon())
+    app.setStyle(CheckIndicatorStyle())
     app.setStyleSheet(DARK_THEME_QSS)
 
     # 防止最后一个窗口关闭时自动退出（我们需要最小化到托盘）

@@ -262,35 +262,12 @@ QStatusBar QLabel:last-child { border-right: none; }
 QStatusBar::item { border: none; }
 
 /* ── 复选框 ──────────────────────────────────────── */
+/* 指示器样式由 CheckIndicatorStyle (QProxyStyle) 绘制，QSS 只控制文字 */
 QCheckBox { color: #D4D4D4; spacing: 6px; }
 QCheckBox:disabled { color: #6A6A6A; }
-QCheckBox::indicator {
-    width: 16px; height: 16px;
-    border: 1px solid #555555;
-    border-radius: 3px;
-    background-color: #2D2D2D;
-}
-QCheckBox::indicator:hover { border: 1px solid #0455A4; }
-QCheckBox::indicator:checked {
-    background-color: #0455A4;
-    border: 1px solid #0455A4;
-    image: none;
-}
-QCheckBox::indicator:checked:hover { background-color: #0567C0; }
 
 /* 单选按钮 */
 QRadioButton { color: #D4D4D4; spacing: 6px; padding: 4px 0; }
-QRadioButton::indicator {
-    width: 16px; height: 16px;
-    border: 1px solid #555555;
-    border-radius: 8px;
-    background-color: #2D2D2D;
-}
-QRadioButton::indicator:checked {
-    background-color: #2D2D2D;
-    border: 1px solid #0455A4;
-}
-QRadioButton::indicator:checked:hover { border: 1px solid #0567C0; }
 
 /* ── 分组框 ──────────────────────────────────────── */
 QGroupBox {
@@ -365,7 +342,7 @@ QToolTip {
 
 /* ── 对话框按钮框 ────────────────────────────────── */
 QDialogButtonBox QPushButton { min-width: 72px; }
-"""
+"""  # noqa: E501
 
 LIGHT_THEME_QSS = """
 QMainWindow, QDialog, QWidget {
