@@ -5,10 +5,10 @@ import json
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
-    QCheckBox, QComboBox, QDateTimeEdit, QDialog, QDialogButtonBox,
-    QFileDialog, QFormLayout, QGroupBox, QHBoxLayout, QLabel, QLineEdit,
-    QMessageBox, QPlainTextEdit, QPushButton, QRadioButton, QSpinBox,
-    QStackedWidget, QVBoxLayout, QWidget,
+    QAbstractSpinBox, QCheckBox, QComboBox, QDateTimeEdit, QDialog,
+    QDialogButtonBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
+    QLabel, QLineEdit, QMessageBox, QPlainTextEdit, QPushButton,
+    QRadioButton, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
 from config import (
@@ -18,11 +18,13 @@ from config import (
 
 
 class CronConfigWidget(QWidget):
-    """Cron 触发器配置：标准 5 字段（分/时/日/月/周）。"""
+    """Cron 触发器配置：标准 5 字段（分/时/日/月/周），单行排列。"""
 
     def __init__(self):
         super().__init__()
-        form = QFormLayout(self)
+        layout = QHBoxLayout(self)
+        layout.setSpacing(4)
+
         self.fields = {}
         defaults = {
             "minute": "*",
@@ -32,24 +34,24 @@ class CronConfigWidget(QWidget):
             "day_of_week": "*",
         }
         labels = {
-            "minute": "分钟",
-            "hour": "小时",
+            "minute": "分",
+            "hour": "时",
             "day": "日",
             "month": "月",
-            "day_of_week": "星期",
+            "day_of_week": "周",
         }
         for key in ("minute", "hour", "day", "month", "day_of_week"):
+            layout.addWidget(QLabel(labels[key]))
             edit = QLineEdit(defaults[key])
-            edit.setPlaceholderText("如 * / 0-59 / , / - (默认 *)")
+            edit.setFixedWidth(60)
+            edit.setPlaceholderText("*")
             self.fields[key] = edit
-            form.addRow(labels[key], edit)
+            layout.addWidget(edit)
 
-        hint = QLabel(
-            "提示：* = 任意值 | */5 = 每5 | 1,3,5 = 列举 | 1-5 = 范围\n"
-            "星期: mon-sun 或 0-6 (0=周一)"
-        )
+        hint = QLabel("* = 任意 | */5 = 每5 | 1,3,5 = 列举 | 1-5 = 范围")
         hint.setStyleSheet("color: #888; font-size: 11px;")
-        form.addRow(hint)
+        layout.addWidget(hint)
+        layout.addStretch()
 
     def get_config(self) -> dict:
         result = {}
@@ -65,55 +67,43 @@ class CronConfigWidget(QWidget):
 
 
 class IntervalConfigWidget(QWidget):
-    """Interval 触发器配置：天/时/分/秒。"""
+    """Interval 触发器配置：固定间隔秒数。"""
 
     def __init__(self):
         super().__init__()
-        form = QFormLayout(self)
-
-        self.minutes = QSpinBox()
-        self.minutes.setRange(0, 999999)
-        self.minutes.setValue(10)
+        layout = QHBoxLayout(self)
+        layout.setSpacing(4)
 
         self.seconds = QSpinBox()
-        self.seconds.setRange(0, 59)
+        self.seconds.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.seconds.setRange(1, 999999)
+        self.seconds.setValue(600)
+        self.seconds.setFixedWidth(80)
 
-        self.hours = QSpinBox()
-        self.hours.setRange(0, 999)
-
-        self.days = QSpinBox()
-        self.days.setRange(0, 365)
-
-        form.addRow("天", self.days)
-        form.addRow("小时", self.hours)
-        form.addRow("分钟", self.minutes)
-        form.addRow("秒", self.seconds)
+        layout.addWidget(QLabel("间隔"))
+        layout.addWidget(self.seconds)
+        layout.addWidget(QLabel("秒"))
+        layout.addStretch()
 
     def get_config(self) -> dict:
-        result = {}
-        if self.days.value():
-            result["days"] = self.days.value()
-        if self.hours.value():
-            result["hours"] = self.hours.value()
-        if self.minutes.value():
-            result["minutes"] = self.minutes.value()
-        if self.seconds.value():
-            result["seconds"] = self.seconds.value()
-        return result or {"minutes": 10}
+        return {"seconds": self.seconds.value()}
 
     def set_config(self, config: dict):
-        self.days.setValue(config.get("days", 0))
-        self.hours.setValue(config.get("hours", 0))
-        self.minutes.setValue(config.get("minutes", 0))
-        self.seconds.setValue(config.get("seconds", 0))
+        # 兼容旧数据：将天/时/分统一换算为秒
+        total = config.get("seconds", 0)
+        total += config.get("minutes", 0) * 60
+        total += config.get("hours", 0) * 3600
+        total += config.get("days", 0) * 86400
+        self.seconds.setValue(max(total, 1))
 
 
 class DateConfigWidget(QWidget):
-    """Date 一次性触发配置：日期时间选择。"""
+    """Date 一次性触发配置：日期时间选择，单行排列。"""
 
     def __init__(self):
         super().__init__()
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
+        layout.setSpacing(4)
         self.dt_edit = QDateTimeEdit()
         self.dt_edit.setDisplayFormat("yyyy-MM-dd HH:mm:ss")
         self.dt_edit.setCalendarPopup(True)
@@ -122,6 +112,7 @@ class DateConfigWidget(QWidget):
         )
         layout.addWidget(QLabel("运行时间:"))
         layout.addWidget(self.dt_edit)
+        layout.addStretch()
 
     def get_config(self) -> dict:
         dt = self.dt_edit.dateTime().toPython()
@@ -147,10 +138,12 @@ class TaskEditDialog(QDialog):
 
     def _init_ui(self):
         layout = QVBoxLayout(self)
+        layout.setSpacing(6)
 
         # ── 基本信息 ──────────────────────────────────────
         info_group = QGroupBox("基本信息")
         info_form = QFormLayout(info_group)
+        info_form.setSpacing(4)
 
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("必填，如：数据库备份")
@@ -177,8 +170,8 @@ class TaskEditDialog(QDialog):
         mono = QFont("Consolas")
         mono.setStyleHint(QFont.Monospace)
         self.command_edit.setFont(mono)
-        self.command_edit.setMinimumHeight(120)
-        self.command_edit.setMaximumHeight(200)
+        self.command_edit.setMinimumHeight(80)
+        self.command_edit.setMaximumHeight(150)
         info_form.addRow("执行命令 *", self.command_edit)
 
         # 工作目录 + 浏览按钮
@@ -196,6 +189,7 @@ class TaskEditDialog(QDialog):
         # ── 触发配置 ──────────────────────────────────────
         trigger_group = QGroupBox("触发方式")
         trigger_layout = QVBoxLayout(trigger_group)
+        trigger_layout.setSpacing(4)
 
         # 单选按钮
         radio_layout = QHBoxLayout()
@@ -230,29 +224,53 @@ class TaskEditDialog(QDialog):
 
         # ── 高级选项 ──────────────────────────────────────
         adv_group = QGroupBox("高级选项")
-        adv_form = QFormLayout(adv_group)
+        adv_layout = QVBoxLayout(adv_group)
+        adv_layout.setSpacing(6)
 
+        # 第 1 行：启用此任务
         self.enabled_check = QCheckBox("启用此任务")
         self.enabled_check.setChecked(True)
-        adv_form.addRow("", self.enabled_check)
+        adv_layout.addWidget(self.enabled_check)
 
+        # 第 2 行：三个数据项，用 addStretch 拉开间距
+        row = QHBoxLayout()
+        row.setSpacing(8)
+
+        # 最大并发
+        row.addWidget(QLabel("最大并发"))
         self.max_instances = QSpinBox()
+        self.max_instances.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.max_instances.setRange(1, 100)
         self.max_instances.setValue(1)
-        adv_form.addRow("最大并发实例", self.max_instances)
+        self.max_instances.setFixedWidth(50)
+        row.addWidget(self.max_instances)
 
+        row.addStretch(20)
+
+        # 宽限期
+        row.addWidget(QLabel("宽限期"))
         self.misfire_grace = QSpinBox()
+        self.misfire_grace.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.misfire_grace.setRange(1, 86400)
         self.misfire_grace.setValue(60)
-        self.misfire_grace.setSuffix(" 秒")
-        adv_form.addRow("错过执行宽限期", self.misfire_grace)
+        self.misfire_grace.setFixedWidth(60)
+        row.addWidget(self.misfire_grace)
+        row.addWidget(QLabel("秒"))
 
+        row.addStretch(20)
+
+        # 超时
+        row.addWidget(QLabel("超时"))
         self.timeout = QSpinBox()
+        self.timeout.setButtonSymbols(QAbstractSpinBox.NoButtons)
         self.timeout.setRange(0, 86400)
         self.timeout.setValue(0)
-        self.timeout.setSuffix(" 秒")
-        self.timeout.setSpecialValueText("不限")
-        adv_form.addRow("超时时间", self.timeout)
+        self.timeout.setFixedWidth(60)
+        row.addWidget(self.timeout)
+        row.addWidget(QLabel("秒(0=不限)"))
+
+        row.addStretch()
+        adv_layout.addLayout(row)
 
         layout.addWidget(adv_group)
 
@@ -297,12 +315,26 @@ class TaskEditDialog(QDialog):
             self.cwd_edit.setText(path)
 
     def _validate_and_accept(self):
-        """校验必填字段。"""
+        """校验必填字段和参数。"""
         if not self.name_edit.text().strip():
             QMessageBox.warning(self, "提示", "任务名称不能为空")
             return
         if not self.command_edit.toPlainText().strip():
             QMessageBox.warning(self, "提示", "执行命令不能为空")
+            return
+        # 校验高级选项参数
+        if self.max_instances.value() < 1:
+            QMessageBox.warning(self, "提示", "最大并发不能小于 1")
+            return
+        if self.misfire_grace.value() < 1:
+            QMessageBox.warning(self, "提示", "宽限期不能小于 1 秒")
+            return
+        if self.timeout.value() < 0:
+            QMessageBox.warning(self, "提示", "超时时间不能为负数")
+            return
+        # 校验间隔触发器
+        if self.radio_interval.isChecked() and self.seconds.value() < 1:
+            QMessageBox.warning(self, "提示", "间隔秒数不能小于 1")
             return
         self.accept()
 
