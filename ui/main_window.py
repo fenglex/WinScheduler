@@ -56,6 +56,8 @@ class MainWindow(QMainWindow):
 
         self._running_tasks: set[int] = set()
         self._recently_finished: bool = False
+        self._last_tasks_sig: tuple | None = None   # 上次刷新的表格内容签名
+        self._select_first_pending: bool = True     # 首次加载后默认选中第一行
 
         self._init_ui()
         self._connect_signals()
@@ -242,7 +244,14 @@ class MainWindow(QMainWindow):
     # ── 任务列表 ──────────────────────────────────────────
 
     def refresh_tasks(self):
-        """刷新任务列表表格。"""
+        """刷新任务列表表格。
+
+        防选中跳动的三重深险：
+        1. 内容签名不变时完全跳过重建（周期刷新大多数情况）；
+        2. 必须重建时，先记下选中的任务 ID，重建后按 ID（而非行号）
+           恢复选中，不受排序重排影响；
+        3. 首次加载默认选中第一个任务。
+        """
         tasks = self.db.get_all_tasks()
         self.log_panel.update_task_list(tasks)
 
@@ -252,56 +261,31 @@ class MainWindow(QMainWindow):
         else:
             self.table_stack.setCurrentWidget(self.empty_placeholder)
 
+        # ── 先计算显示内容，再决定是否重建 ──────────────
+        display_rows = [self._build_row_data(t) for t in tasks]
+        sig = tuple(tuple(r[0]) for r in display_rows)
+        if sig == self._last_tasks_sig:
+            # 内容无变化：跳过重建，保留用户当前的排序与选中
+            self._update_status_bar(len(tasks))
+            return
+        self._last_tasks_sig = sig
+
+        # 记住当前选中的任务 ID（而非行号）
+        prev_selected = self._get_selected_task_id()
+
         # 填充期间必须禁用排序：否则逐行 setItem 会触发实时重排，
         # 导致行内容错乱（Qt 推荐做法）
         self.table.setSortingEnabled(False)
         self.table.setRowCount(len(tasks))
 
-        for row, t in enumerate(tasks):
-            trigger_label = TRIGGER_LABELS.get(t["trigger_type"], t["trigger_type"])
-            schedule_text = SchedulerManager.describe_trigger(
-                t["trigger_type"], t.get("trigger_config", "{}")
-            )
-
-            # 状态文本
-            task_id = t["id"]
-            if task_id in self._running_tasks:
-                status_text = STATUS_LABELS.get("running", "运行中")
-                status_color = "#FAC775"
-            elif not t["enabled"]:
-                status_text = "已禁用"
-                status_color = "#777777"
-            elif t.get("last_status") == "success":
-                status_text = STATUS_LABELS.get("success", "成功")
-                status_color = "#639922"
-            elif t.get("last_status") in ("failed", "timeout", "killed"):
-                status_text = STATUS_LABELS.get(t["last_status"], "失败")
-                status_color = "#E24B4A"
-            else:
-                status_text = "空闲"
-                status_color = "#B4B2A9"
-
-            last_run = t.get("last_run_at")
-            last_run_text = last_run.strftime("%Y-%m-%d %H:%M:%S") if last_run else "—"
-
-            next_run = t.get("next_run_at")
-            next_run_text = next_run.strftime("%Y-%m-%d %H:%M:%S") if next_run else "—"
-
-            row_data = [
-                str(t["id"]),
-                t["name"],
-                trigger_label,
-                schedule_text,
-                status_text,
-                last_run_text,
-                next_run_text,
-            ]
+        for row, (row_data, status_color) in enumerate(display_rows):
+            t_id = int(row_data[0])
             for col, val in enumerate(row_data):
                 if col == 0:
                     item = NumericTableItem(val)
                 else:
                     item = QTableWidgetItem(val)
-                item.setData(Qt.UserRole, t["id"])
+                item.setData(Qt.UserRole, t_id)
                 # 居中对齐：ID / 触发方式 / 状态
                 if col in (0, 2, 4):
                     item.setTextAlignment(Qt.AlignCenter)
@@ -315,8 +299,68 @@ class MainWindow(QMainWindow):
                     item.setFont(f)
                 self.table.setItem(row, col, item)
 
+        # 重新启用排序（会按当前排序列立即重排）
         self.table.setSortingEnabled(True)
+
+        # ── 恢复选中：按任务 ID 定位行，不受重排影响 ──────
+        restored = False
+        if prev_selected is not None:
+            restored = self._select_task_row(prev_selected)
+        if not restored and self._select_first_pending and tasks:
+            self._select_task_row(tasks[0]["id"])
+            self._select_first_pending = False
+
         self._update_status_bar(len(tasks))
+
+    def _build_row_data(self, t: dict) -> tuple[list[str], str]:
+        """计算单个任务的表格显示内容与状态色。"""
+        trigger_label = TRIGGER_LABELS.get(t["trigger_type"], t["trigger_type"])
+        schedule_text = SchedulerManager.describe_trigger(
+            t["trigger_type"], t.get("trigger_config", "{}")
+        )
+
+        task_id = t["id"]
+        if task_id in self._running_tasks:
+            status_text = STATUS_LABELS.get("running", "运行中")
+            status_color = "#FAC775"
+        elif not t["enabled"]:
+            status_text = "已禁用"
+            status_color = "#777777"
+        elif t.get("last_status") == "success":
+            status_text = STATUS_LABELS.get("success", "成功")
+            status_color = "#639922"
+        elif t.get("last_status") in ("failed", "timeout", "killed"):
+            status_text = STATUS_LABELS.get(t["last_status"], "失败")
+            status_color = "#E24B4A"
+        else:
+            status_text = "空闲"
+            status_color = "#B4B2A9"
+
+        last_run = t.get("last_run_at")
+        last_run_text = last_run.strftime("%Y-%m-%d %H:%M:%S") if last_run else "—"
+
+        next_run = t.get("next_run_at")
+        next_run_text = next_run.strftime("%Y-%m-%d %H:%M:%S") if next_run else "—"
+
+        row_data = [
+            str(task_id),
+            t["name"],
+            trigger_label,
+            schedule_text,
+            status_text,
+            last_run_text,
+            next_run_text,
+        ]
+        return row_data, status_color
+
+    def _select_task_row(self, task_id: int) -> bool:
+        """按任务 ID 选中对应行（不受排序重排影响）。成功返回 True。"""
+        for r in range(self.table.rowCount()):
+            item = self.table.item(r, 0)
+            if item and item.data(Qt.UserRole) == task_id:
+                self.table.selectRow(r)
+                return True
+        return False
 
     def _update_status_bar(self, task_count: int):
         """更新状态栏。"""
@@ -363,6 +407,7 @@ class MainWindow(QMainWindow):
             task_id = self.db.create_task(data)
             self.scheduler.add_or_update(self.db.get_task(task_id))
             self.refresh_tasks()
+            self._select_task_row(task_id)   # 选中新创建的任务
             self._log_to_panel(f"已创建任务: {data['name']}")
 
     def _edit_task(self):
