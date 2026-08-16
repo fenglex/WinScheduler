@@ -180,6 +180,9 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setDefaultSectionSize(32)
         # 表头可点击排序（视觉提示）
         self.table.setSortingEnabled(True)
+        # 默认按 ID 升序：设置排序指示器，后续每次重建重启用排序时
+        # 都会按此指示器重排（用户会话内改排的下次启动恢复此默认）
+        self.table.horizontalHeader().setSortIndicator(0, Qt.AscendingOrder)
 
         self.table.doubleClicked.connect(self._edit_task)
         self.table.customContextMenuRequested.connect(self._show_context_menu)
