@@ -12,6 +12,7 @@ from datetime import datetime
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.schedulers.base import STATE_PAUSED, STATE_RUNNING
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
@@ -65,7 +66,17 @@ class SchedulerManager:
 
     @property
     def running(self) -> bool:
-        return self._started and self.scheduler.running
+        """调度器是否处于运行态（未暂停、未停止）。
+
+        注意不能用 scheduler.running：它只判断 state != STOPPED，
+        暂停态（STATE_PAUSED）下仍返回 True，会导致无法从暂停恢复。
+        """
+        return self._started and self.scheduler.state == STATE_RUNNING
+
+    @property
+    def paused(self) -> bool:
+        """调度器是否处于暂停态。"""
+        return self._started and self.scheduler.state == STATE_PAUSED
 
     # ── 任务管理 ──────────────────────────────────────────
 

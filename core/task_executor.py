@@ -4,7 +4,7 @@
   - TaskExecutor 是 QObject，生命周期在主线程。
   - 每个任务在一个独立的 threading.Thread 中执行 subprocess。
   - 日志/状态通过 Qt 信号发射（跨线程自动走 QueuedConnection）。
-  - 数据库写入在工作线程中完成（SQLAlchemy check_same_thread=False + WAL）。
+  - 数据库写入在工作线程中完成（sqlite3 单连接 + 锁串行化 + WAL）。
 """
 
 import os
@@ -60,21 +60,20 @@ class TaskExecutor(QObject):
     def run_task(self, task: dict):
         """执行任务（可从 APScheduler 线程或主线程调用）。"""
         task_id = task["id"]
+        started_at = datetime.now()
+
+        # 原子地「检查占用 + 登记运行」：避免并发触发时两个线程
+        # 同时通过检查，导致同一任务重复运行。
         with self._lock:
             if task_id in self._running:
                 return  # 已在运行，跳过（受 max_instances 语义控制）
-
-        started_at = datetime.now()
-        log_id = self.db.create_run_log(task_id, started_at)
-
-        rt = RunningTask(
-            task_id=task_id,
-            task_name=task["name"],
-            log_id=log_id,
-            started_at=started_at,
-        )
-
-        with self._lock:
+            log_id = self.db.create_run_log(task_id, started_at)
+            rt = RunningTask(
+                task_id=task_id,
+                task_name=task["name"],
+                log_id=log_id,
+                started_at=started_at,
+            )
             self._running[task_id] = rt
 
         # 发射开始信号 + 起始日志
@@ -200,8 +199,19 @@ class TaskExecutor(QObject):
                 "-File", script_path,
             ]
             use_shell = False
+        elif "\n" in task["command"]:
+            # 多行 Shell 脚本：cmd /c 无法可靠执行内嵌换行的命令串，
+            # 写入临时 .bat 后调用，保证逐行顺序执行。
+            fd, script_path = tempfile.mkstemp(suffix=".bat", prefix="task_pilot_")
+            with os.fdopen(fd, "wb") as f:
+                body = task["command"].replace("\r\n", "\n").replace("\n", "\r\n")
+                # cmd 批处理默认使用 ANSI/OEM 代码页（中文系统为 GBK）
+                f.write(body.encode("gbk", errors="replace"))
+
+            popen_args = ["cmd.exe", "/c", script_path]
+            use_shell = False
         else:
-            # Shell 命令：直接交给 cmd.exe（shell=True）
+            # 单行 Shell 命令：直接交给 cmd.exe（shell=True）
             popen_args = task["command"]
             use_shell = True
 
@@ -248,7 +258,7 @@ class TaskExecutor(QObject):
             rt.process.wait()
             exit_code = rt.process.returncode
         finally:
-            # 清理 PowerShell 临时文件
+            # 清理临时脚本文件（.ps1 / .bat）
             if script_path:
                 try:
                     os.unlink(script_path)
