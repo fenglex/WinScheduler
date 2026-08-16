@@ -12,7 +12,6 @@ _APPDATA = os.environ.get("APPDATA") or os.path.expanduser("~")
 DATA_DIR = os.path.join(_APPDATA, APP_NAME)
 
 DB_PATH = os.path.join(DATA_DIR, "tasks.db")
-DB_URL = f"sqlite:///{DB_PATH}"
 
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 

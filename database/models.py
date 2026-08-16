@@ -1,4 +1,4 @@
-﻿"""SQLAlchemy 模型占位：仅提供类型别名以便 UI 代码类型提示可工作。"""
+"""类型别名：任务与运行日志均以 dict 形式在各层之间传递。"""
 
 from typing import Any
 

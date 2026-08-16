@@ -63,7 +63,6 @@ apscheduler_hidden = [
     "apscheduler.triggers.interval",
     "apscheduler.triggers.date",
     "apscheduler.jobstores.memory",
-    "apscheduler.jobstores.sqlalchemy",
     "apscheduler.executors.pool",
     "apscheduler.executors.asyncio",
     "tzlocal",
