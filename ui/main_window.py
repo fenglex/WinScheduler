@@ -14,6 +14,17 @@ from PySide6.QtWidgets import (
 )
 
 from config import STATUS_LABELS, TRIGGER_LABELS
+
+
+class NumericTableItem(QTableWidgetItem):
+    """按数值排序的表格项（用于 ID 列，避免 1, 10, 2 的字典序问题）。"""
+
+    def __lt__(self, other):
+        try:
+            return float(self.text()) < float(other.text())
+        except (ValueError, TypeError):
+            return super().__lt__(other)
+
 from core.log_collector import LogCollector
 from core.scheduler_manager import SchedulerManager
 from core.task_executor import TaskExecutor
@@ -230,7 +241,6 @@ class MainWindow(QMainWindow):
     def refresh_tasks(self):
         """刷新任务列表表格。"""
         tasks = self.db.get_all_tasks()
-        self.table.setRowCount(len(tasks))
         self.log_panel.update_task_list(tasks)
 
         # 空表/有表切换：占位提示 vs 实际表格
@@ -238,6 +248,11 @@ class MainWindow(QMainWindow):
             self.table_stack.setCurrentWidget(self.table)
         else:
             self.table_stack.setCurrentWidget(self.empty_placeholder)
+
+        # 填充期间必须禁用排序：否则逐行 setItem 会触发实时重排，
+        # 导致行内容错乱（Qt 推荐做法）
+        self.table.setSortingEnabled(False)
+        self.table.setRowCount(len(tasks))
 
         for row, t in enumerate(tasks):
             trigger_label = TRIGGER_LABELS.get(t["trigger_type"], t["trigger_type"])
@@ -279,7 +294,10 @@ class MainWindow(QMainWindow):
                 next_run_text,
             ]
             for col, val in enumerate(row_data):
-                item = QTableWidgetItem(val)
+                if col == 0:
+                    item = NumericTableItem(val)
+                else:
+                    item = QTableWidgetItem(val)
                 item.setData(Qt.UserRole, t["id"])
                 # 居中对齐：ID / 触发方式 / 状态
                 if col in (0, 2, 4):
@@ -294,6 +312,7 @@ class MainWindow(QMainWindow):
                     item.setFont(f)
                 self.table.setItem(row, col, item)
 
+        self.table.setSortingEnabled(True)
         self._update_status_bar(len(tasks))
 
     def _update_status_bar(self, task_count: int):
@@ -302,7 +321,7 @@ class MainWindow(QMainWindow):
         enabled_count = len([t for t in self.db.get_all_tasks() if t["enabled"]])
 
         if self.scheduler.running:
-            scheduler_text = f"● 调度器运行中"
+            scheduler_text = "● 调度器运行中"
         else:
             scheduler_text = "○ 调度器已暂停"
 

@@ -11,6 +11,8 @@ from PySide6.QtWidgets import (
     QRadioButton, QSpinBox, QStackedWidget, QVBoxLayout, QWidget,
 )
 
+from apscheduler.triggers.cron import CronTrigger
+
 from config import (
     COMMAND_LABELS, COMMAND_POWERSHELL, COMMAND_SHELL, COMMAND_TYPES,
     TRIGGER_CRON, TRIGGER_DATE, TRIGGER_INTERVAL, TRIGGER_LABELS,
@@ -89,11 +91,11 @@ class IntervalConfigWidget(QWidget):
         return {"seconds": self.seconds.value()}
 
     def set_config(self, config: dict):
-        # 兼容旧数据：将天/时/分统一换算为秒
-        total = config.get("seconds", 0)
-        total += config.get("minutes", 0) * 60
-        total += config.get("hours", 0) * 3600
-        total += config.get("days", 0) * 86400
+        # 兼容旧数据：将天/时/分统一换算为秒（None 值按 0 处理）
+        total = int(config.get("seconds") or 0)
+        total += int(config.get("minutes") or 0) * 60
+        total += int(config.get("hours") or 0) * 3600
+        total += int(config.get("days") or 0) * 86400
         self.seconds.setValue(max(total, 1))
 
 
@@ -332,10 +334,17 @@ class TaskEditDialog(QDialog):
         if self.timeout.value() < 0:
             QMessageBox.warning(self, "提示", "超时时间不能为负数")
             return
-        # 校验间隔触发器
-        if self.radio_interval.isChecked() and self.seconds.value() < 1:
+        # 校验间隔触发器（self.seconds 在 IntervalConfigWidget 内部）
+        if self.radio_interval.isChecked() and self.interval_config.seconds.value() < 1:
             QMessageBox.warning(self, "提示", "间隔秒数不能小于 1")
             return
+        # 校验 cron 字段：非法表达式（如分钟填 abc）会导致任务永不触发
+        if self.radio_cron.isChecked():
+            try:
+                CronTrigger(**self.cron_config.get_config())
+            except ValueError as e:
+                QMessageBox.warning(self, "提示", f"Cron 表达式无效：{e}")
+                return
         self.accept()
 
     def _load_task(self, task: dict):

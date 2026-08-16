@@ -63,6 +63,7 @@ class HistoryLogWidget(QWidget):
     def __init__(self, db_manager):
         super().__init__()
         self.db = db_manager
+        self._task_sig: str | None = None  # 上次同步的任务列表签名
         self._init_ui()
         self.refresh()
 
@@ -125,7 +126,11 @@ class HistoryLogWidget(QWidget):
         self._current_logs: list[dict] = []
 
     def update_task_list(self, tasks: list[dict]):
-        """更新任务下拉框。"""
+        """更新任务下拉框（列表无变化时跳过，避免每 5 秒重建打断用户操作）。"""
+        sig = ";".join(f"{t['id']}:{t['name']}" for t in tasks)
+        if sig == self._task_sig:
+            return
+        self._task_sig = sig
         current_id = self.task_combo.currentData()
         self.task_combo.clear()
         self.task_combo.addItem("全部", None)
