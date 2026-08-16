@@ -19,7 +19,8 @@ class SingleInstance:
         """尝试获取锁。成功返回 True，已有实例运行返回 False。"""
         try:
             self._socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            # 注意：不要设置 SO_REUSEADDR —— Windows 上它允许两个 socket
+            # 绑定同一端口，会使单实例锁失效；不设置时第二个 bind 才会失败。
             self._socket.bind(("127.0.0.1", SINGLE_INSTANCE_PORT))
             self._socket.listen(1)
             return True

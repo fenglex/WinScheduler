@@ -1,5 +1,6 @@
 """开机自启管理：通过 Windows 注册表实现。"""
 
+import os
 import sys
 
 try:
@@ -20,18 +21,24 @@ class AutoStart:
     APP_NAME = "WinScheduler"
 
     @staticmethod
-    def _get_exe_path() -> str:
-        """获取当前可执行文件路径（兼容 PyInstaller）。"""
+    def _get_command() -> str:
+        """获取自启命令行（兼容 PyInstaller）。
+
+        打包后：直接运行 exe；开发模式：python + main.py 完整路径，
+        否则注册的是裸 python.exe，开机后不会启动调度器。
+        """
         if getattr(sys, "frozen", False):
-            return sys.executable
-        return sys.executable
+            return f'"{sys.executable}" --minimized'
+        script = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "main.py"))
+        return f'"{sys.executable}" "{script}" --minimized'
 
     @classmethod
     def enable(cls):
         """启用开机自启。"""
         if not _HAS_WINREG:
             raise RuntimeError("winreg 不可用（非 Windows 系统）")
-        exe_path = cls._get_exe_path()
+        command = cls._get_command()
         key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             cls.REGISTRY_KEY,
@@ -40,8 +47,7 @@ class AutoStart:
         )
         try:
             winreg.SetValueEx(
-                key, cls.APP_NAME, 0, winreg.REG_SZ,
-                f'"{exe_path}" --minimized',
+                key, cls.APP_NAME, 0, winreg.REG_SZ, command,
             )
         finally:
             winreg.CloseKey(key)
