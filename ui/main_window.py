@@ -35,6 +35,7 @@ from ui.icons import (
 )
 from ui.log_panel import LogPanel
 from ui.settings_dialog import SettingsDialog
+from ui.table_style import RowSelectionDelegate
 from ui.task_edit_dialog import TaskEditDialog
 
 
@@ -162,6 +163,8 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setWordWrap(False)
+        # 选中行自绘：整行高亮 + 左侧强调条（QSS 选中色对比度不足）
+        self.table.setItemDelegate(RowSelectionDelegate(self.table))
         # 任务名称列自适应
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         # 其余列固定宽度（按功能预留足够空间）

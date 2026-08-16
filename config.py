@@ -123,7 +123,7 @@ QTableWidget {
     color: #D4D4D4;
     gridline-color: #2F2F2F;
     border: none;
-    selection-background-color: #0455A4;
+    selection-background-color: #0E6CC0;
     selection-color: #FFFFFF;
     outline: 0;
 }
@@ -132,7 +132,7 @@ QTableWidget::item {
     border-bottom: 1px solid #252525;
 }
 QTableWidget::item:hover:!selected {
-    background-color: #2A2A2A;
+    background-color: #323232;
 }
 QTableCornerButton::section {
     background-color: #2D2D2D;

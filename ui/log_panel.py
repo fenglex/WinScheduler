@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
 )
 
 from config import LOG_COLORS, STATUS_LABELS
+from ui.table_style import RowSelectionDelegate
 
 
 class RealtimeLogWidget(QPlainTextEdit):
@@ -110,6 +111,7 @@ class HistoryLogWidget(QWidget):
         self.table.setAlternatingRowColors(True)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setItemDelegate(RowSelectionDelegate(self.table))
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         self.table.itemSelectionChanged.connect(self._on_select)
