@@ -4,7 +4,7 @@ import os
 import sys
 
 APP_NAME = "WinScheduler"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # ── 数据目录 ──────────────────────────────────────────────
 # 优先使用 %APPDATA%，打包后数据不随 exe 移动而丢失。
